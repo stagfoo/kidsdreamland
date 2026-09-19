@@ -1,0 +1,44 @@
+name: Build
+
+# Manual only. GitHub Actions minutes are finite across a personal account,
+# and an `on: push` workflow that has run out just fails noisily on every
+# commit. scripts/release.sh builds and publishes locally instead.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # Tracks what is actually installed locally. Copying this pin from
+          # a sibling app without updating it is how CI ends up on a stale
+          # toolchain that builds something nobody is testing against.
+          flutter-version: "3.47.0"
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build release APK
+        # Release, not debug: this app repaints a canvas under a moving
+        # finger, which is exactly what a JIT build is worse at. Signed
+        # with the committed debug.keystore either way.
+        run: flutter build apk --release --target-platform android-arm64 --split-per-abi
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: kidsdreamland-release-apk
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          retention-days: 14

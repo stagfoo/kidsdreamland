@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A crayon, drawn on the 108-unit adaptive canvas of which only the
+     middle 72 is guaranteed visible. The glyph is scaled and centred to
+     sit inside that safe zone whatever shape a launcher masks to. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:translateX="54" android:translateY="54">
+        <group android:rotation="-38">
+            <!-- Barrel -->
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M-9,-26 L9,-26 L9,14 L-9,14 Z" />
+            <!-- Band -->
+            <path
+                android:fillColor="#FFD54F"
+                android:pathData="M-9,2 L9,2 L9,10 L-9,10 Z" />
+            <!-- Tip -->
+            <path
+                android:fillColor="#FFD54F"
+                android:pathData="M-9,14 L9,14 L0,30 Z" />
+            <!-- Point -->
+            <path
+                android:fillColor="#3E2723"
+                android:pathData="M-3,23 L3,23 L0,30 Z" />
+        </group>
+    </group>
+</vector>

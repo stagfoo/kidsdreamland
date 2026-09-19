@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app's own accent, so the icon is the same purple as the
+         mascot's body and the menu chrome. -->
+    <color name="ic_launcher_background">#7E57C2</color>
+</resources>

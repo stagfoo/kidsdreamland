@@ -1,0 +1,66 @@
+{
+  "categories": [
+    {
+      "id": "dinosaurs",
+      "title": "Dinosaurs",
+      "icon": "dinosaur"
+    },
+    {
+      "id": "farm",
+      "title": "Farm",
+      "icon": "farm"
+    }
+  ],
+  "assets": [
+    {
+      "id": "dino_trex",
+      "category": "dinosaurs",
+      "title": "T-Rex"
+    },
+    {
+      "id": "dino_stego",
+      "category": "dinosaurs",
+      "title": "Stegosaurus"
+    },
+    {
+      "id": "dino_bronto",
+      "category": "dinosaurs",
+      "title": "Brontosaurus"
+    },
+    {
+      "id": "dino_trike",
+      "category": "dinosaurs",
+      "title": "Triceratops"
+    },
+    {
+      "id": "dino_ptero",
+      "category": "dinosaurs",
+      "title": "Pterodactyl"
+    },
+    {
+      "id": "farm_cow",
+      "category": "farm",
+      "title": "Cow"
+    },
+    {
+      "id": "farm_pig",
+      "category": "farm",
+      "title": "Pig"
+    },
+    {
+      "id": "farm_sheep",
+      "category": "farm",
+      "title": "Sheep"
+    },
+    {
+      "id": "farm_chicken",
+      "category": "farm",
+      "title": "Chicken"
+    },
+    {
+      "id": "farm_duck",
+      "category": "farm",
+      "title": "Duck"
+    }
+  ]
+}
