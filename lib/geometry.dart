@@ -186,3 +186,33 @@ List<Vec2> sampleEvenly(List<Vec2> points, int count) {
   out.add(points.last);
   return out;
 }
+
+/// [count] points spread along a set of subpaths, shared out in
+/// proportion to each subpath's own length.
+///
+/// The difference from calling [sampleEvenly] on the concatenated points
+/// is the whole reason this exists. Joining subpaths end-to-end invents a
+/// segment from the tip of the tail to the start of the head, and even
+/// spacing along that joined line drops checkpoints onto it — dots
+/// hovering in the empty space between two body parts, on no drawn line
+/// at all. A child chases them.
+///
+/// Subpaths too short to earn a dot still get one, because a part of the
+/// drawing with no checkpoint on it reads as a part that does not count.
+List<Vec2> sampleAlongSubpaths(List<List<Vec2>> subpaths, int count) {
+  final usable = [for (final s in subpaths) if (s.length > 1) s];
+  if (usable.isEmpty || count <= 0) return const [];
+
+  final lengths = [for (final s in usable) polylineLength(s)];
+  final total = lengths.fold<double>(0, (a, b) => a + b);
+  if (total <= 0) return [usable.first.first];
+
+  // Hand out by length, then make sure nothing is left with nothing.
+  final share = [
+    for (final l in lengths) math.max(1, (count * l / total).round()),
+  ];
+
+  return [
+    for (var i = 0; i < usable.length; i++) ...sampleEvenly(usable[i], share[i]),
+  ];
+}

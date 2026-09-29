@@ -129,6 +129,98 @@ interior, be big enough for a fingertip, and have a unique id; every guide
 dot must sit on the outline; the drawing must fill a decent share of its
 canvas and stay inside it.
 
+## Tracing a PNG on the tablet
+
+The other way to make a drawing is to draw it — in any paint app, as dark
+line art on transparency — and hand the PNG to the app's own art tool.
+
+**Getting in.** Long-press the mascot on the menu, then hold the button on
+the gate that appears. Two deliberate holds, about four seconds: a child
+poking the face does not produce that and cannot stumble into it. Past the
+gate is the one part of the app with words in it, which is fine, because
+it is the only part that is not for the audience.
+
+**How the trace works.** Not by following the ink. Tracing the ink gives
+the boundary of the *brush stroke* — a line down each side of the pencil
+mark — which re-strokes into an outline of an outline. Instead the empty
+space is flooded: whatever the outside reaches is background, and every
+other pocket is an area the artist enclosed. Those pockets are the
+regions, and their edges are the line.
+
+Two details make the difference between a trace that looks drawn and one
+that looks scanned:
+
+- **The flood is four-connected**, so a diagonal touch of ink counts as a
+  closed wall. Eight-connected flooding squeezes through a one-pixel
+  diagonal pinhole, and one pinhole merges a head into a body.
+- **Both sides of every line are nudged half a stroke inwards**, onto the
+  middle of the ink. The silhouette follows the outside of the pencil mark
+  and the region boundary the inside, so without this a body outlined once
+  arrives as two curves a stroke-width apart and strokes as a tramline. It
+  also means a filled region reaches the centre of the line rather than
+  stopping at its inner edge, so there is no pale halo between the colour
+  and the outline. Corners have to travel further than the straights — by
+  `1/cos(half the turn)` — and on a shape the simplifier has reduced to
+  four points *every* point is a corner, so getting that factor wrong
+  makes the tramline narrower rather than gone.
+
+Stroke width is measured as area over perimeter, which settles at half the
+width of any long thin shape however it curves. Measuring the strokes
+directly would read a near-horizontal line as enormously wide and a
+vertical one as thin, which is the one thing it must not do.
+
+**The knobs are sliders, all four of them** — ink threshold, detail,
+smoothing, smallest region — because there is no right threshold for a PNG
+in the abstract. You drag until the overlay sits on the line, with the
+original ghosted underneath and the checkpoints drawn exactly where the app
+will put them. Retracing a 1400-square PNG takes about 100ms, so the
+preview keeps up with a finger.
+
+**What the art has to do.** One rule above all others: **the lines must
+actually close.** A gap of a few pixels where an ear meets a head is not a
+cosmetic problem — the enclosed area leaks out into the background, and
+that part of the drawing silently stops being colourable. The panel names
+the three ways a trace goes wrong (no ink found, nothing enclosed,
+everything too small to tap) rather than leaving you to work it out from an
+empty preview.
+
+Regions arrive big-to-small, which is also the order `Artwork.regionAt`
+needs, and can be reordered, recoloured, renamed and numbered. Each one
+carries an **interior point** taken from its widest horizontal run — not
+its bounding-box centre, which for a ring-shaped area such as a body with a
+spot on it lands in the hole rather than in the region. It is what proves a
+traced polygon really encloses the pixels it came from, and it is where
+Phase 3 will put the number.
+
+Checkpoints are authored explicitly by the importer rather than left to the
+loader's fallback, and spread **per subpath**. A traced drawing is a dozen
+separate loops, and walking them as one joined polyline drops dots onto the
+invented jump from the end of one loop to the start of the next — hovering
+in empty space, on no line at all. A child chases them.
+
+## Packs
+
+A pack is one JSON file holding any number of drawings and the categories
+they belong to. Not a zip: the app renders from vector paths and never
+needs the source PNG at runtime, so there is nothing binary to carry — and
+a text file needs no archive dependency, unpacks nowhere, survives being
+emailed to yourself, and can be read when something looks wrong on the
+tablet.
+
+Reading one is forgiving in the same way loading a saved drawing is. A
+malformed animal costs you that animal and not the other nine; a pack from
+a newer build still opens, because unknown fields are ignored rather than
+rejected; and a drawing whose category nobody declared gets one invented
+for it, because the alternative is a drawing that imports successfully and
+then appears on no screen.
+
+Imported drawings merge into the library as equals rather than sitting on a
+separate shelf. A child does not know which animals came with the app, and
+a "my imports" section would be a piece of filing to understand before you
+can colour a fish. They live in `<documents>/imported/` as one JSON file
+per drawing, in exactly the shape of the files in `assets/art/` — so a
+drawing that earns its place can be copied straight into the shipped set.
+
 ## The feel layer
 
 ### Squishy buttons
@@ -190,8 +282,12 @@ imports, so it is testable with no device attached.
 | `lib/palette.dart` | The six colours and three brushes, by key |
 | `lib/canvas_fit.dart` | Asset units to screen and back |
 | `lib/sound_policy.dart` | Throttling and pitch, with no audio in sight |
+| `lib/png_trace.dart` | Pixels to closed vector loops: masking, flooding, boundary walking, simplify, smooth, offset |
+| `lib/art_draft.dart` | A drawing being authored, and the asset JSON it emits |
+| `lib/art_bundle.dart` | The pack format, and how much malformed input it survives |
 | `lib/artwork_painter.dart`, `lib/mascot.dart`, `lib/*_screen.dart`, `lib/squishy_button.dart`, `lib/palette_strip.dart`, `lib/tool_picker.dart`, `lib/celebration.dart` | The UI |
-| `lib/sound_manager.dart`, `lib/asset_library.dart`, `lib/gallery_store.dart` | The thin layer that touches plugins |
+| `lib/editor_screen.dart`, `lib/trace_editor_screen.dart`, `lib/grownup_gate.dart` | The art tool, behind the hold-to-open gate |
+| `lib/sound_manager.dart`, `lib/asset_library.dart`, `lib/gallery_store.dart`, `lib/imported_art_store.dart`, `lib/png_decode.dart` | The thin layer that touches plugins |
 
 Colours and brushes are stored as **keys**, not raw values, so retuning the
 palette restyles saved work rather than stranding it, and a drawing written
@@ -254,7 +350,8 @@ keytool -list -v -keystore android/app/debug.keystore -storepass android \
 release config sits invisible until someone actually builds one — worth
 doing after any change to the Android side, not just before shipping.
 `android/app/proguard-rules.pro` keeps the reflective entry points for
-`audioplayers` and `gal`.
+`audioplayers` and `gal`; `file_picker` ships its own consumer rules and
+needs nothing added here.
 
 Regenerating art or sound:
 

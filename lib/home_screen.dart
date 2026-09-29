@@ -4,7 +4,9 @@ import 'artwork_painter.dart';
 import 'asset_library.dart';
 import 'category_screen.dart';
 import 'drawing_asset.dart';
+import 'editor_screen.dart';
 import 'gallery_screen.dart';
+import 'grownup_gate.dart';
 import 'mascot.dart';
 import 'sound_manager.dart';
 import 'sound_policy.dart';
@@ -27,9 +29,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  late AssetLibrary _library = widget.library;
+
   @override
   Widget build(BuildContext context) {
-    final categories = widget.library.categories;
+    final categories = _library.categories;
 
     return Scaffold(
       body: SafeArea(
@@ -40,16 +44,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   flex: 2,
                   child: Center(
-                    child: SquishyButton(
-                      semanticLabel: 'Dreamy',
-                      sfx: Sfx.mascot,
-                      shadow: false,
-                      // Tapping the mascot does nothing but make him
-                      // squeak. That is the point: the first thing a small
-                      // child does on any screen is poke the face, and it
-                      // should answer.
-                      onPressed: () {},
-                      child: const Mascot(size: 220),
+                    // The way in to the art tool. A long press rather than
+                    // a visible button, and then a second deliberate hold
+                    // behind it: four seconds of sustained intent, which a
+                    // child poking a face does not produce and cannot
+                    // stumble into. The mascot is the right place for it
+                    // precisely because tapping him is already harmless.
+                    child: GestureDetector(
+                      onLongPress: _openEditor,
+                      child: SquishyButton(
+                        semanticLabel: 'Dreamy',
+                        sfx: Sfx.mascot,
+                        shadow: false,
+                        // Tapping the mascot does nothing but make him
+                        // squeak. That is the point: the first thing a
+                        // small child does on any screen is poke the face,
+                        // and it should answer.
+                        onPressed: () {},
+                        child: const Mascot(size: 220),
+                      ),
                     ),
                   ),
                 ),
@@ -66,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             category: categories[i],
                             tint: Sky.categoryTints[
                                 i % Sky.categoryTints.length],
-                            preview: widget.library
+                            preview: _library
                                 .inCategory(categories[i].id)
                                 .firstOrNull,
                             onPressed: () => _open(categories[i]),
@@ -88,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) =>
-                            GalleryScreen(library: widget.library),
+                            GalleryScreen(library: _library),
                       ),
                     ),
                   ),
@@ -116,11 +129,27 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CategoryScreen(
-          library: widget.library,
+          library: _library,
           category: category,
         ),
       ),
     );
+  }
+
+  Future<void> _openEditor() async {
+    final through = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const GrownupGate()),
+    );
+    if (through != true || !mounted) return;
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => EditorScreen(library: _library)),
+    );
+
+    // Come back to whatever the editor left behind. Importing a drawing
+    // and then finding the menu unchanged reads as the import failing.
+    final library = await AssetLibrary.reload();
+    if (mounted) setState(() => _library = library);
   }
 }
 
