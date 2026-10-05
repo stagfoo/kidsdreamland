@@ -14,6 +14,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'art_draft.dart';
@@ -25,6 +26,34 @@ import 'palette.dart';
 import 'png_decode.dart';
 import 'png_trace.dart';
 import 'theme.dart';
+
+/// One trace's worth of work, for the worker isolate.
+///
+/// Its own class rather than a record so the byte list travels by reference
+/// where the platform allows it: a Uint8List is transferable, and a megapixel
+/// image copied on every slider nudge would hand back the cost this moved off
+/// the UI thread to avoid.
+class _TraceRequest {
+  const _TraceRequest({
+    required this.rgba,
+    required this.width,
+    required this.height,
+    required this.options,
+  });
+
+  final Uint8List rgba;
+  final int width, height;
+  final TraceOptions options;
+}
+
+/// Runs on the worker isolate. Top-level, because [compute] cannot carry a
+/// closure over this screen's state.
+TracedArt _traceInBackground(_TraceRequest request) => traceLineArt(
+      request.rgba,
+      request.width,
+      request.height,
+      options: request.options,
+    );
 
 class TraceEditorScreen extends StatefulWidget {
   const TraceEditorScreen({
@@ -63,15 +92,33 @@ class _TraceEditorScreenState extends State<TraceEditorScreen> {
         : widget.knownCategories.first.id,
   );
 
-  /// Retracing runs on the UI thread, so a slider dragged continuously
-  /// would retrace on every frame. The wait is short enough to feel live
-  /// and long enough that a drag costs one trace rather than sixty.
+  /// A slider dragged continuously would retrace on every frame. The wait
+  /// is short enough to feel live and long enough that a drag costs one
+  /// trace rather than sixty.
   Timer? _debounce;
+
+  /// A trace is running. The first one starts before anything is on screen,
+  /// so without this the editor opens to a blank panel and looks hung.
+  bool _tracing = false;
+
+  /// Which trace is the current one.
+  ///
+  /// Traces run off the UI thread now, so two can be in flight when a slider
+  /// is nudged twice: without this the slower first one can land after the
+  /// faster second and quietly undo it.
+  int _traceGeneration = 0;
+
+  /// Why the last trace produced nothing, or null when it worked.
+  ///
+  /// Shown on the panel rather than thrown. This runs on a tablet with no
+  /// console attached, and an image the tracer cannot make sense of used to
+  /// take the whole screen down with it.
+  String? _traceError;
 
   @override
   void initState() {
     super.initState();
-    _retrace();
+    unawaited(_retrace());
   }
 
   @override
@@ -84,16 +131,52 @@ class _TraceEditorScreenState extends State<TraceEditorScreen> {
 
   void _scheduleRetrace() {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 140), _retrace);
+    _debounce = Timer(
+      const Duration(milliseconds: 140),
+      () => unawaited(_retrace()),
+    );
   }
 
-  void _retrace() {
-    final trace = traceLineArt(
-      widget.image.rgba,
-      widget.image.width,
-      widget.image.height,
-      options: _options,
-    );
+  /// Traces the image and rebuilds the draft from it.
+  ///
+  /// On a worker isolate, not here. The trace floods and walks every pixel of
+  /// a megapixel image, which on the UI thread meant the editor could not
+  /// paint its first frame until it finished — the screen opened frozen, and
+  /// a big enough image sat there long enough for Android to offer to close
+  /// the app. The tracer is plain Dart over a byte list, so it moves across
+  /// with nothing to unpick.
+  Future<void> _retrace() async {
+    final generation = ++_traceGeneration;
+    setState(() {
+      _tracing = true;
+      _traceError = null;
+    });
+
+    final TracedArt trace;
+    try {
+      trace = await compute(
+        _traceInBackground,
+        _TraceRequest(
+          rgba: widget.image.rgba,
+          width: widget.image.width,
+          height: widget.image.height,
+          options: _options,
+        ),
+      );
+    } catch (e) {
+      // Caught rather than allowed to escape: this used to run unguarded from
+      // initState, so anything the tracer could not handle arrived as a crash
+      // on a screen that had never painted.
+      if (!mounted || generation != _traceGeneration) return;
+      setState(() {
+        _tracing = false;
+        _traceError = '$e';
+      });
+      return;
+    }
+
+    // A newer trace has already started, so this one is stale.
+    if (!mounted || generation != _traceGeneration) return;
 
     final draft = ArtDraft.fromTrace(
       trace,
@@ -116,12 +199,56 @@ class _TraceEditorScreenState extends State<TraceEditorScreen> {
     draft.symmetryAxisX = old?.symmetryAxisX;
 
     setState(() {
+      _tracing = false;
       _trace = trace;
       _draft = draft;
       if (_selected != null && _selected! >= draft.regions.length) {
         _selected = null;
       }
     });
+  }
+
+  /// What the screen shows before the first trace has landed.
+  ///
+  /// Three different things, because they ask for three different reactions: a
+  /// trace still running, a trace that failed, and a trace that worked but
+  /// found nothing to draw. A bare spinner for all three is what made a failed
+  /// trace look like a hang.
+  Widget _firstTrace() {
+    final error = _traceError;
+    if (error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.broken_image_outlined, size: 40),
+              const SizedBox(height: 12),
+              const Text(
+                'That image could not be traced',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                error,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'The tracer wants line art on a transparent background — a '
+                'photograph or a drawing on solid white has no empty space for '
+                'it to flood.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return const Center(child: CircularProgressIndicator());
   }
 
   @override
@@ -133,9 +260,18 @@ class _TraceEditorScreenState extends State<TraceEditorScreen> {
       appBar: AppBar(
         title: const Text('Trace a drawing'),
         backgroundColor: Sky.card,
+        // A retrace no longer blocks the screen, so without this a slider nudge
+        // on a big image looks like nothing happened until the overlay jumps.
+        bottom: _tracing
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(2),
+                child: LinearProgressIndicator(minHeight: 2),
+              )
+            : null,
         actions: [
           TextButton.icon(
-            onPressed: _saving || draft == null || draft.regions.isEmpty
+            onPressed: _saving || _tracing || draft == null ||
+                    draft.regions.isEmpty
                 ? null
                 : _save,
             icon: const Icon(Icons.check_rounded),
@@ -145,7 +281,7 @@ class _TraceEditorScreenState extends State<TraceEditorScreen> {
         ],
       ),
       body: trace == null || draft == null
-          ? const Center(child: CircularProgressIndicator())
+          ? _firstTrace()
           : Row(
               children: [
                 Expanded(
