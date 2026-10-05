@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'asset_library.dart';
+import 'crash_log.dart';
 import 'draw_screen.dart';
 import 'home_screen.dart';
 import 'mascot.dart';
@@ -10,6 +11,13 @@ import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // First, so that anything which goes wrong during start-up is caught too.
+  // The log is read from disk before the handlers are installed, because
+  // loading it afterwards would overwrite whatever this run had already
+  // recorded with the previous run's list.
+  await CrashLog.instance.load();
+  CrashLog.instance.install();
 
   // Landscape only. A drawing is wider than it is tall, the tool column
   // needs the width, and a tablet propped on a table is landscape anyway
@@ -67,6 +75,14 @@ class _BootState extends State<_Boot> {
       future: _loading,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
+          // Written down as well as drawn around. This branch swallows the
+          // error to keep a child from meeting a grey crash screen, which also
+          // meant nobody could ever find out what it was.
+          CrashLog.instance.record(
+            'loading the artwork',
+            snapshot.error!,
+            snapshot.stackTrace,
+          );
           // The only thing that reaches here is a broken bundled asset,
           // which is a build problem rather than something a child can
           // cause — but it must not be a grey crash screen.

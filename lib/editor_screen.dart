@@ -14,6 +14,8 @@ import 'package:flutter/material.dart';
 
 import 'art_bundle.dart';
 import 'asset_library.dart';
+import 'crash_log.dart';
+import 'crash_log_screen.dart';
 import 'artwork_painter.dart';
 import 'drawing_asset.dart';
 import 'imported_art_store.dart';
@@ -47,6 +49,24 @@ class _EditorScreenState extends State<EditorScreen> {
       appBar: AppBar(
         title: const Text('Art tool'),
         backgroundColor: Sky.card,
+        actions: [
+          // The way to the log. Here rather than on the menu because it is
+          // text, and everything with text in it lives behind the gate.
+          IconButton(
+            tooltip: 'Log',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CrashLogScreen()),
+            ),
+            icon: Badge(
+              // The count, so a problem announces itself rather than waiting
+              // to be gone looking for.
+              isLabelVisible: !CrashLog.instance.isEmpty,
+              label: Text('${CrashLog.instance.entries.length}'),
+              child: const Icon(Icons.receipt_long_rounded),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [
@@ -123,7 +143,8 @@ class _EditorScreenState extends State<EditorScreen> {
     DecodedImage? decoded;
     try {
       decoded = await decodeImageForTracing(await files.first.readAsBytes());
-    } catch (e) {
+    } catch (e, stack) {
+      CrashLog.instance.record('reading an image', e, stack);
       setState(() => _busy = false);
       _say('Could not read that image: $e');
       return;
@@ -170,14 +191,21 @@ class _EditorScreenState extends State<EditorScreen> {
       if (result.skipped.isNotEmpty) {
         parts.add('Skipped ${result.skipped.length}: '
             '${result.skipped.take(3).join('; ')}');
+        // Every one of them, not the three the message has room for.
+        CrashLog.instance.note(
+          'opening a pack',
+          'skipped ${result.skipped.length}: ${result.skipped.join('; ')}',
+        );
       }
       if (result.fromNewerBuild) {
         parts.add('That pack was made by a newer build.');
       }
       _say(parts.join(' '));
-    } on BundleFormatException catch (e) {
+    } on BundleFormatException catch (e, stack) {
+      CrashLog.instance.record('opening a pack', e, stack);
       _say('Not a pack: ${e.message}');
-    } catch (e) {
+    } catch (e, stack) {
+      CrashLog.instance.record('opening a pack', e, stack);
       _say('Could not open that pack: $e');
     } finally {
       if (mounted) setState(() => _busy = false);

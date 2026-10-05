@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 
 import 'art_draft.dart';
 import 'asset_library.dart';
+import 'crash_log.dart';
 import 'drawing_asset.dart';
 import 'geometry.dart';
 import 'imported_art_store.dart';
@@ -163,10 +164,11 @@ class _TraceEditorScreenState extends State<TraceEditorScreen> {
           options: _options,
         ),
       );
-    } catch (e) {
+    } catch (e, stack) {
       // Caught rather than allowed to escape: this used to run unguarded from
       // initState, so anything the tracer could not handle arrived as a crash
       // on a screen that had never painted.
+      CrashLog.instance.record('tracing an image', e, stack);
       if (!mounted || generation != _traceGeneration) return;
       setState(() {
         _tracing = false;
@@ -378,9 +380,11 @@ class _TraceEditorScreenState extends State<TraceEditorScreen> {
       );
       await AssetLibrary.reload();
       if (mounted) Navigator.of(context).pop(true);
-    } on AssetFormatException catch (e) {
+    } on AssetFormatException catch (e, stack) {
+      CrashLog.instance.record('saving a trace', e, stack);
       _say('That trace will not load: ${e.message}');
-    } catch (e) {
+    } catch (e, stack) {
+      CrashLog.instance.record('saving a trace', e, stack);
       _say('Could not save: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
